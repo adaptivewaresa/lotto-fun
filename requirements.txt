@@ -2,3 +2,6 @@ Flask
 requests
 beautifulsoup4
 python-dotenv
+wheel
+gunicorn 
+flask
