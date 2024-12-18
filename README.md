@@ -1,4 +1,4 @@
-### **Predictive Entropic Nexus (PEN) Lotto API**
+### **Lottoscope - A Predictive Entropic Nexus (PEN) Lotto API**
 
 The **PEN Lotto API** is a Flask-based web application that dynamically generates lotto numbers based on statistical draw frequencies fetched in real-time from an external source. By leveraging techniques like chaos theory, frequency analysis, and balance enforcement, the API provides users with unique and optimized lotto predictions.
 
