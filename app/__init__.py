@@ -7,7 +7,7 @@ def create_app():
     app.config.from_object('app.config')
     
     # Register routes and services
-    from .routes import bp as routes_bp
+    from .routes import api_bp as routes_bp
     app.register_blueprint(routes_bp)
 
     return app
