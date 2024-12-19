@@ -1,12 +1,13 @@
 from flask import Flask
-from app.routes import api_bp
-
 
 def create_app():
-    """Application factory."""
     app = Flask(__name__)
-
-    # Register Blueprints
-    app.register_blueprint(api_bp)
+    
+    # Load configuration
+    app.config.from_object('app.config')
+    
+    # Register routes and services
+    from .routes import bp as routes_bp
+    app.register_blueprint(routes_bp)
 
     return app
