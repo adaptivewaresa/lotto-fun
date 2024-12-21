@@ -1,3 +1,4 @@
+import os
 import random
 import requests
 from bs4 import BeautifulSoup
@@ -9,16 +10,20 @@ from app.fun_facts import get_random_fun_fact
 
 from logging.handlers import RotatingFileHandler
 
-# Set up rotating log files to manage log size
-log_handler = RotatingFileHandler(
-    "app_logs.log", maxBytes=10**6, backupCount=3)
-log_handler.setLevel(logging.INFO)
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_handler.setFormatter(formatter)
+home_directory = os.path.expanduser("~")
 
+# Logger Configuration
+LOG_FILE_PATH = f"{home_directory}/lottoscope.adaptiveware.dev/logs/debug.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE_PATH),  # Log to file
+        logging.StreamHandler()             # Also log to console
+    ]
+)
 logger = logging.getLogger(__name__)
-logger.addHandler(log_handler)
 
 
 # URL for scraping lotto frequencies
