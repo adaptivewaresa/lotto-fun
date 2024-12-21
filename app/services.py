@@ -7,12 +7,22 @@ from functools import lru_cache
 
 from app.fun_facts import get_random_fun_fact
 
+from logging.handlers import RotatingFileHandler
+
+# Set up rotating log files to manage log size
+log_handler = RotatingFileHandler(
+    "app_logs.log", maxBytes=10**6, backupCount=3)
+log_handler.setLevel(logging.INFO)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_handler.setFormatter(formatter)
+
+logger = logging.getLogger(__name__)
+logger.addHandler(log_handler)
+
+
 # URL for scraping lotto frequencies
 LOTTO_URL = 'https://za.national-lottery.com/lotto/hot-numbers'
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -34,7 +44,8 @@ def fetch_draw_frequencies():
         frequencies = {}
         for cell in table_cells:
             try:
-                ball = int(cell.find("div", class_="ball lotto ball").text.strip())
+                ball = int(
+                    cell.find("div", class_="ball lotto ball").text.strip())
                 drawn_text = int(cell.find("strong").text.strip())
                 frequencies[ball] = drawn_text
             except (ValueError, AttributeError):
@@ -79,40 +90,34 @@ def enforce_universal_balance(numbers):
 def generate_pen_lotto_numbers():
     """Generate lotto numbers with caching, error handling, and logging."""
     logger.info("Generating lotto numbers...")
-    draw_frequencies = fetch_draw_frequencies()
-    if not draw_frequencies:
-        return {
-            "error": "Unable to fetch draw frequencies. Please try again later."
-        }
-
-    reasons = []
-
     try:
+        draw_frequencies = fetch_draw_frequencies()
+        if not draw_frequencies:
+            raise ValueError(
+                "Unable to fetch draw frequencies. Please try again later.")
+
+        reasons = []
+
         # Lucky Echo Bias
         lucky_numbers = lucky_echo_bias(draw_frequencies)
         reasons.append(
-            f"Selected most frequently drawn numbers: {', '.join(map(str, lucky_numbers))}"
-        )
+            f"Selected most frequently drawn numbers: {', '.join(map(str, lucky_numbers))}")
 
         # Inverse Fortuna Boost
         underdog_numbers = inverse_fortuna_boost(draw_frequencies)
         reasons.append(
-            f"Boosted least frequently drawn numbers: {', '.join(map(str, underdog_numbers))}"
-        )
+            f"Boosted least frequently drawn numbers: {', '.join(map(str, underdog_numbers))}")
 
         # Chaos Jitter
         chaotic_numbers = chaos_jitter()
         reasons.append(
-            f"Generated random chaotic numbers: {', '.join(map(str, chaotic_numbers))}"
-        )
+            f"Generated random chaotic numbers: {', '.join(map(str, chaotic_numbers))}")
 
         # Enforce Universal Balance
         final_numbers = enforce_universal_balance(
-            lucky_numbers + chaotic_numbers[:3] + underdog_numbers
-        )
+            lucky_numbers + chaotic_numbers[:3] + underdog_numbers)
         reasons.append(
-            f"Enforced universal balance: {', '.join(map(str, final_numbers))}"
-        )
+            f"Enforced universal balance: {', '.join(map(str, final_numbers))}")
 
         logger.info("Lotto numbers generated successfully.")
         return {
@@ -120,11 +125,15 @@ def generate_pen_lotto_numbers():
             "reasons": reasons,
             "fun_fact": get_random_fun_fact(),
         }
+    except requests.RequestException as e:
+        logger.error(f"Error fetching lotto frequencies: {e}")
+        return {"error": "Unable to fetch lotto frequencies. Please check your network connection and try again."}
+    except ValueError as e:
+        logger.error(f"Error in data processing: {e}")
+        return {"error": str(e)}
     except Exception as e:
-        logger.error(f"Error during lotto number generation: {e}")
-        return {
-            "error": "An error occurred during lotto number generation. Please try again later."
-        }
+        logger.error(f"Unexpected error: {e}")
+        return {"error": "An error occurred during lotto number generation. Please try again later."}
 
 
 # Background Task for Updating Cache
@@ -134,3 +143,10 @@ def refresh_frequency_cache():
         fetch_draw_frequencies.cache_clear()
         fetch_draw_frequencies()  # Populate cache
         time.sleep(86400)  # Refresh every 24 hours
+
+
+# Background Task for Updating Cache
+def refresh_frequency_cache_task():
+    logger.info("Refreshing frequency cache...")
+    fetch_draw_frequencies.cache_clear()
+    fetch_draw_frequencies()  # Repopulate the cache
