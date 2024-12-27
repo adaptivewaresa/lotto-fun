@@ -66,7 +66,7 @@ def fetch_draw_frequencies():
         return {}
 
 
-def lucky_echo_bias(draw_frequencies, top_count=13, return_count=5):
+def lucky_echo_bias(draw_frequencies, top_count=14, return_count=7):
     sorted_frequencies = sorted(
         draw_frequencies.items(), key=lambda item: item[1], reverse=True
     )
@@ -75,9 +75,8 @@ def lucky_echo_bias(draw_frequencies, top_count=13, return_count=5):
     return top_numbers[:return_count]
 
 
-def inverse_fortuna_boost(draw_frequencies, bottom_count=3):
+def inverse_fortuna_boost(draw_frequencies, bottom_count=5):
     sorted_numbers = sorted(draw_frequencies.items(), key=lambda x: x[1])
-    random.shuffle(sorted_numbers)
     return [num for num, _ in sorted_numbers[:bottom_count]]
 
 
@@ -86,6 +85,7 @@ def chaos_jitter(range_=49, count=5):
 
 
 def enforce_universal_balance(numbers):
+    numbers = list(set(numbers))
     random.shuffle(numbers)
     if any(number % 7 == 0 for number in numbers):
         return numbers[:6]
@@ -121,7 +121,7 @@ def generate_pen_lotto_numbers():
 
         # Enforce Universal Balance
         final_numbers = enforce_universal_balance(
-            lucky_numbers + chaotic_numbers[:3] + underdog_numbers)
+            lucky_numbers + chaotic_numbers + underdog_numbers)
         reasons.append(
             f"Enforced universal balance: {', '.join(map(str, final_numbers))}")
 
