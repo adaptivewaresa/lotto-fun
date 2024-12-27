@@ -6,33 +6,39 @@ from bs4 import BeautifulSoup
 import logging
 import time
 from functools import lru_cache
+import threading
+from logging.handlers import RotatingFileHandler
 
 from app.fun_facts import get_random_fun_fact
 
-from logging.handlers import RotatingFileHandler
-
 home_directory = os.path.expanduser("~")
 
-# Logger Configuration
-LOG_FILE_PATH = f"{home_directory}/lottoscope.adaptiveware.dev/logs/debug.log"
+# Logger Configuration with RotatingFileHandler
+LOG_FILE_PATH = os.path.join(
+    home_directory, 'lottoscope.adaptiveware.dev', 'logs', 'debug.log')
+
+log_handler = RotatingFileHandler(
+    LOG_FILE_PATH, maxBytes=5 * 1024 * 1024, backupCount=3)
+log_handler.setLevel(logging.INFO)
+log_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE_PATH),  # Log to file
-        logging.StreamHandler()             # Also log to console
+        log_handler,
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
-
 
 # URL for scraping lotto frequencies
 LOTTO_URL = 'https://za.national-lottery.com/lotto/hot-numbers'
 
 
 def fetch_html(url: str) -> str:
-    """Helper function to fetch HTML content with error handling."""
+    """Helper function to fetch HTML content with error handling and retry logic."""
     try:
         logger.info(f"Fetching content from {url}...")
         response = requests.get(url, timeout=10)
@@ -40,10 +46,15 @@ def fetch_html(url: str) -> str:
         return response.text
     except requests.RequestException as e:
         logger.error(f"Error fetching URL {url}: {e}")
-        return ''
+        return None
     except Exception as e:
         logger.error(f"Unexpected error while fetching URL {url}: {e}")
-        return ''
+        return None
+
+
+def get_top_numbers(draw_frequencies, count, reverse=True):
+    """Utility function to get top or bottom numbers from frequencies."""
+    return [number for number, _ in sorted(draw_frequencies.items(), key=lambda item: item[1], reverse=reverse)[:count]]
 
 
 @lru_cache(maxsize=1)
@@ -90,7 +101,7 @@ def get_lotto_jackpot(url: str = LOTTO_URL) -> str:
     try:
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # The jackpot is within a span with a specific class. Inspect the website to confirm.
+        # The jackpot is within a span with a specific class.
         jackpot_element = soup.find("span", class_="jackpotTxt")
 
         if jackpot_element:
@@ -109,59 +120,50 @@ def get_lotto_jackpot(url: str = LOTTO_URL) -> str:
 
 
 def lucky_echo_bias(draw_frequencies, top_count=14, return_count=7):
-    sorted_frequencies = sorted(
-        draw_frequencies.items(), key=lambda item: item[1], reverse=True
-    )
-    top_numbers = [number for number, _ in sorted_frequencies[:top_count]]
+    """Apply Lucky Echo Bias to select frequent lotto numbers."""
+    top_numbers = get_top_numbers(draw_frequencies, top_count)
     random.shuffle(top_numbers)
     return top_numbers[:return_count]
 
 
 def inverse_fortuna_boost(draw_frequencies, bottom_count=5):
-    sorted_numbers = sorted(draw_frequencies.items(), key=lambda x: x[1])
-    return [num for num, _ in sorted_numbers[:bottom_count]]
+    """Apply Inverse Fortuna Boost to select least frequent lotto numbers."""
+    return get_top_numbers(draw_frequencies, bottom_count, reverse=False)
 
 
 def chaos_jitter(range_=49, count=5):
+    """Generate random chaotic numbers within a specified range."""
     return [random.randint(1, range_) for _ in range(count)]
 
 
 def enforce_universal_balance(numbers, lucky_numbers):
+    """Enforce universal balance among selected numbers."""
     if not isinstance(numbers, list) or not isinstance(lucky_numbers, list):
         return []
 
     numbers = list(set(numbers))
     lucky_numbers = list(set(lucky_numbers))
+
     all_available_numbers = numbers + lucky_numbers
     random.shuffle(all_available_numbers)
     random.shuffle(lucky_numbers)
 
-    result = []
-
-    num_lucky_to_add = min(2, len(lucky_numbers))
-    result.extend(lucky_numbers[:num_lucky_to_add])
+    result = lucky_numbers[:min(2, len(lucky_numbers))]
 
     multiples_of_7 = [num for num in numbers if num %
                       7 == 0 and num not in result]
     if multiples_of_7:
         result.extend(multiples_of_7[:1])
 
-    remaining_numbers = [
-        num for num in all_available_numbers if num not in result]
-    remaining_numbers = list(set(remaining_numbers))
+    remaining_numbers = list(set(all_available_numbers) - set(result))
     random.shuffle(remaining_numbers)
-    result.extend(remaining_numbers)
-
-    while len(result) < 6 and remaining_numbers:
-        result.append(remaining_numbers.pop())
-
-    if len(set(result)) < 6:
-        return all_available_numbers[:6]
+    result.extend(remaining_numbers[:6 - len(result)])
 
     return result[:6]
 
 
 def generate_pen_lotto_numbers():
+    """Generate the final lotto numbers based on various biases and randomness."""
     logger.info("Generating lotto numbers...")
     try:
         draw_frequencies = fetch_draw_frequencies()
@@ -169,28 +171,18 @@ def generate_pen_lotto_numbers():
             raise ValueError(
                 "Unable to fetch draw frequencies. Please try again later.")
 
-        reasons = []
-
-        # Lucky Echo Bias
         lucky_numbers = lucky_echo_bias(draw_frequencies)
-        reasons.append(
-            f"Selected most frequently drawn numbers: {', '.join(map(str, lucky_numbers))}")
-
-        # Inverse Fortuna Boost
         underdog_numbers = inverse_fortuna_boost(draw_frequencies)
-        reasons.append(
-            f"Boosted least frequently drawn numbers: {', '.join(map(str, underdog_numbers))}")
-
-        # Chaos Jitter
         chaotic_numbers = chaos_jitter()
-        reasons.append(
-            f"Generated random chaotic numbers: {', '.join(map(str, chaotic_numbers))}")
-
-        # Enforce Universal Balance
         final_numbers = enforce_universal_balance(
             chaotic_numbers + underdog_numbers, lucky_numbers)
-        reasons.append(
-            f"Enforced universal balance: {', '.join(map(str, final_numbers))}")
+
+        reasons = [
+            f"Selected most frequently drawn numbers: {', '.join(map(str, lucky_numbers))}",
+            f"Boosted least frequently drawn numbers: {', '.join(map(str, underdog_numbers))}",
+            f"Generated random chaotic numbers: {', '.join(map(str, chaotic_numbers))}",
+            f"Enforced universal balance: {', '.join(map(str, final_numbers))}",
+        ]
 
         logger.info("Lotto numbers generated successfully.")
         return {
@@ -199,6 +191,7 @@ def generate_pen_lotto_numbers():
             "reasons": reasons,
             "fun_fact": get_random_fun_fact(),
         }
+
     except requests.RequestException as e:
         logger.error(f"Error fetching lotto frequencies: {e}")
         return {"error": "Unable to fetch lotto frequencies. Please check your network connection and try again."}
@@ -211,11 +204,19 @@ def generate_pen_lotto_numbers():
 
 
 def refresh_frequency_cache():
+    """Refresh the frequency cache periodically (every 24 hours)."""
     while True:
         logger.info("Refreshing frequency cache...")
         fetch_draw_frequencies.cache_clear()
         fetch_draw_frequencies()
-        time.sleep(86400)
+        time.sleep(86400)  # Sleep for 24 hours
+
+
+def start_cache_refresh_task():
+    """Start cache refresh task in a separate thread."""
+    thread = threading.Thread(target=refresh_frequency_cache)
+    thread.daemon = True
+    thread.start()
 
 
 def refresh_frequency_cache_task():
