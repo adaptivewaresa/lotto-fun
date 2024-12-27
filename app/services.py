@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import requests
 from bs4 import BeautifulSoup
@@ -30,16 +31,32 @@ logger = logging.getLogger(__name__)
 LOTTO_URL = 'https://za.national-lottery.com/lotto/hot-numbers'
 
 
-@lru_cache(maxsize=1)
-def fetch_draw_frequencies():
-    """Scrape lotto number frequencies with caching and error handling."""
+def fetch_html(url: str) -> str:
+    """Helper function to fetch HTML content with error handling."""
     try:
-        logger.info("Fetching lotto draw frequencies from the website...")
-        response = requests.get(LOTTO_URL, timeout=10)
+        logger.info(f"Fetching content from {url}...")
+        response = requests.get(url, timeout=10)
         response.raise_for_status()  # Raise error for failed requests
+        return response.text
+    except requests.RequestException as e:
+        logger.error(f"Error fetching URL {url}: {e}")
+        return ''
+    except Exception as e:
+        logger.error(f"Unexpected error while fetching URL {url}: {e}")
+        return ''
 
+
+@lru_cache(maxsize=1)
+def fetch_draw_frequencies() -> dict:
+    """Scrape lotto number frequencies with caching and error handling."""
+    html_content = fetch_html(LOTTO_URL)
+
+    if not html_content:
+        return {}
+
+    try:
         # Parse the HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html_content, 'html.parser')
 
         # Extract frequencies
         table_cells = soup.find_all("div", class_="tableCell centred fluid")
@@ -58,12 +75,37 @@ def fetch_draw_frequencies():
 
         logger.info("Successfully fetched draw frequencies.")
         return frequencies
-    except requests.RequestException as e:
-        logger.error(f"Error fetching lotto draw frequencies: {e}")
-        return {}
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Error processing lotto draw frequencies: {e}")
         return {}
+
+
+def get_lotto_jackpot(url: str = LOTTO_URL) -> str:
+    """Fetch the current jackpot amount."""
+    html_content = fetch_html(url)
+
+    if not html_content:
+        return None
+
+    try:
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # The jackpot is within a span with a specific class. Inspect the website to confirm.
+        jackpot_element = soup.find("span", class_="jackpotTxt")
+
+        if jackpot_element:
+            jackpot_text = jackpot_element.text.strip()
+            # Clean up the text (remove extra whitespace, etc.)
+            jackpot_text = re.sub(r"\s+", " ", jackpot_text)
+            return jackpot_text
+        else:
+            logger.warning(
+                "Jackpot element not found on the page. The website structure may have changed.")
+            return None
+
+    except Exception as e:
+        logger.error(f"Unexpected error while fetching jackpot: {e}")
+        return None
 
 
 def lucky_echo_bias(draw_frequencies, top_count=14, return_count=7):
@@ -152,6 +194,7 @@ def generate_pen_lotto_numbers():
 
         logger.info("Lotto numbers generated successfully.")
         return {
+            "jackpot": get_lotto_jackpot(url=LOTTO_URL),
             "numbers": final_numbers,
             "reasons": reasons,
             "fun_fact": get_random_fun_fact(),
