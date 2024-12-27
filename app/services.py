@@ -86,6 +86,7 @@ def chaos_jitter(range_=49, count=5):
 
 
 def enforce_universal_balance(numbers):
+    random.shuffle(numbers)
     if any(number % 7 == 0 for number in numbers):
         return numbers[:6]
     numbers.append(random.randint(1, 7) * 7)
