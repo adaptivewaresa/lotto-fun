@@ -84,17 +84,42 @@ def chaos_jitter(range_=49, count=5):
     return [random.randint(1, range_) for _ in range(count)]
 
 
-def enforce_universal_balance(numbers):
+def enforce_universal_balance(numbers, lucky_numbers):
+    if not isinstance(numbers, list) or not isinstance(lucky_numbers, list):
+        return []
+
     numbers = list(set(numbers))
-    random.shuffle(numbers)
-    if any(number % 7 == 0 for number in numbers):
-        return numbers[:6]
-    numbers.append(random.randint(1, 7) * 7)
-    return numbers[:6]
+    lucky_numbers = list(set(lucky_numbers))
+    all_available_numbers = numbers + lucky_numbers
+    random.shuffle(all_available_numbers)
+    random.shuffle(lucky_numbers)
+
+    result = []
+
+    num_lucky_to_add = min(2, len(lucky_numbers))
+    result.extend(lucky_numbers[:num_lucky_to_add])
+
+    multiples_of_7 = [num for num in numbers if num %
+                      7 == 0 and num not in result]
+    if multiples_of_7:
+        result.extend(multiples_of_7[:1])
+
+    remaining_numbers = [
+        num for num in all_available_numbers if num not in result]
+    remaining_numbers = list(set(remaining_numbers))
+    random.shuffle(remaining_numbers)
+    result.extend(remaining_numbers)
+
+    while len(result) < 6 and remaining_numbers:
+        result.append(remaining_numbers.pop())
+
+    if len(set(result)) < 6:
+        return all_available_numbers[:6]
+
+    return result[:6]
 
 
 def generate_pen_lotto_numbers():
-    """Generate lotto numbers with caching, error handling, and logging."""
     logger.info("Generating lotto numbers...")
     try:
         draw_frequencies = fetch_draw_frequencies()
@@ -121,7 +146,7 @@ def generate_pen_lotto_numbers():
 
         # Enforce Universal Balance
         final_numbers = enforce_universal_balance(
-            lucky_numbers + chaotic_numbers + underdog_numbers)
+            chaotic_numbers + underdog_numbers, lucky_numbers)
         reasons.append(
             f"Enforced universal balance: {', '.join(map(str, final_numbers))}")
 
@@ -142,17 +167,15 @@ def generate_pen_lotto_numbers():
         return {"error": "An error occurred during lotto number generation. Please try again later."}
 
 
-# Background Task for Updating Cache
 def refresh_frequency_cache():
     while True:
         logger.info("Refreshing frequency cache...")
         fetch_draw_frequencies.cache_clear()
-        fetch_draw_frequencies()  # Populate cache
-        time.sleep(86400)  # Refresh every 24 hours
+        fetch_draw_frequencies()
+        time.sleep(86400)
 
 
-# Background Task for Updating Cache
 def refresh_frequency_cache_task():
     logger.info("Refreshing frequency cache...")
     fetch_draw_frequencies.cache_clear()
-    fetch_draw_frequencies()  # Repopulate the cache
+    fetch_draw_frequencies()
